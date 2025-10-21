@@ -30,6 +30,141 @@ void remove_leading_zeros(std::vector<int>& num) {
     }
 }
 
+// Karatsuba multiplication helper
+std::vector<int> multiply_karatsuba(const std::vector<int>& a, const std::vector<int>& b) {
+    if (a.size() < 8 || b.size() < 8) {
+        // Use naive multiplication for small numbers
+        std::vector<int> result(a.size() + b.size(), 0);
+        for (int i = 0; i < a.size(); ++i) {
+            long long carry = 0;
+            for (int j = 0; j < b.size() || carry; ++j) {
+                long long product = result[i + j] + carry;
+                if (j < b.size()) {
+                    product += (long long)a[i] * b[j];
+                }
+                result[i + j] = product % BASE;
+                carry = product / BASE;
+            }
+        }
+        remove_leading_zeros(result);
+        return result;
+    }
+
+    int n = std::max(a.size(), b.size());
+    int m = (n + 1) / 2;
+
+    // Split numbers
+    std::vector<int> a_low(a.begin(), a.begin() + std::min(m, (int)a.size()));
+    std::vector<int> a_high(a.begin() + std::min(m, (int)a.size()), a.end());
+    std::vector<int> b_low(b.begin(), b.begin() + std::min(m, (int)b.size()));
+    std::vector<int> b_high(b.begin() + std::min(m, (int)b.size()), b.end());
+
+    // Recursively compute three products
+    std::vector<int> z0 = multiply_karatsuba(a_low, b_low);
+    std::vector<int> z2 = multiply_karatsuba(a_high, b_high);
+
+    // (a_low + a_high) * (b_low + b_high)
+    std::vector<int> a_sum = a_low;
+    std::vector<int> b_sum = b_low;
+
+    // Add a_high to a_sum
+    long long carry = 0;
+    for (int i = 0; i < a_high.size() || carry; ++i) {
+        if (i >= a_sum.size()) a_sum.push_back(0);
+        long long sum = a_sum[i] + carry;
+        if (i < a_high.size()) sum += a_high[i];
+        a_sum[i] = sum % BASE;
+        carry = sum / BASE;
+    }
+    remove_leading_zeros(a_sum);
+
+    // Add b_high to b_sum
+    carry = 0;
+    for (int i = 0; i < b_high.size() || carry; ++i) {
+        if (i >= b_sum.size()) b_sum.push_back(0);
+        long long sum = b_sum[i] + carry;
+        if (i < b_high.size()) sum += b_high[i];
+        b_sum[i] = sum % BASE;
+        carry = sum / BASE;
+    }
+    remove_leading_zeros(b_sum);
+
+    std::vector<int> z1 = multiply_karatsuba(a_sum, b_sum);
+
+    // z1 = z1 - z2 - z0
+    for (int i = 0; i < z2.size(); ++i) {
+        if (i >= z1.size()) z1.push_back(0);
+        if (z1[i] < z2[i]) {
+            int j = i + 1;
+            while (j < z1.size() && z1[j] == 0) {
+                z1[j] = BASE - 1;
+                j++;
+            }
+            if (j < z1.size()) {
+                z1[j]--;
+                z1[i] += BASE;
+            }
+        }
+        z1[i] -= z2[i];
+    }
+
+    for (int i = 0; i < z0.size(); ++i) {
+        if (i >= z1.size()) z1.push_back(0);
+        if (z1[i] < z0[i]) {
+            int j = i + 1;
+            while (j < z1.size() && z1[j] == 0) {
+                z1[j] = BASE - 1;
+                j++;
+            }
+            if (j < z1.size()) {
+                z1[j]--;
+                z1[i] += BASE;
+            }
+        }
+        z1[i] -= z0[i];
+    }
+
+    remove_leading_zeros(z1);
+
+    // Combine results: z0 + z1 * BASE^m + z2 * BASE^(2*m)
+    std::vector<int> result;
+
+    // Start with z0
+    result = z0;
+
+    // Add z1 shifted by m
+    if (!z1.empty()) {
+        if (result.size() < m) result.resize(m, 0);
+        carry = 0;
+        for (int i = 0; i < z1.size() || carry; ++i) {
+            int pos = m + i;
+            if (pos >= result.size()) result.push_back(0);
+            long long sum = result[pos] + carry;
+            if (i < z1.size()) sum += z1[i];
+            result[pos] = sum % BASE;
+            carry = sum / BASE;
+        }
+    }
+
+    // Add z2 shifted by 2*m
+    if (!z2.empty()) {
+        int shift = 2 * m;
+        if (result.size() < shift) result.resize(shift, 0);
+        carry = 0;
+        for (int i = 0; i < z2.size() || carry; ++i) {
+            int pos = shift + i;
+            if (pos >= result.size()) result.push_back(0);
+            long long sum = result[pos] + carry;
+            if (i < z2.size()) sum += z2[i];
+            result[pos] = sum % BASE;
+            carry = sum / BASE;
+        }
+    }
+
+    remove_leading_zeros(result);
+    return result;
+}
+
 // Constructors
 int2048::int2048() : sign(true), digits(1, 0) {}
 
@@ -230,21 +365,8 @@ int2048& int2048::operator*=(const int2048& other) {
         return *this;
     }
 
-    std::vector<int> result(digits.size() + other.digits.size(), 0);
+    std::vector<int> result = multiply_karatsuba(digits, other.digits);
 
-    for (int i = 0; i < digits.size(); ++i) {
-        long long carry = 0;
-        for (int j = 0; j < other.digits.size() || carry; ++j) {
-            long long product = result[i + j] + carry;
-            if (j < other.digits.size()) {
-                product += (long long)digits[i] * other.digits[j];
-            }
-            result[i + j] = product % BASE;
-            carry = product / BASE;
-        }
-    }
-
-    remove_leading_zeros(result);
     sign = sign == other.sign;
     digits = result;
     return *this;
