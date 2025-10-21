@@ -19,7 +19,10 @@
 
 namespace sjtu {
 class int2048 {
-  // todo
+private:
+    bool sign;  // true for positive, false for negative
+    std::vector<int> digits;  // digits in base BASE, least significant digit first
+
 public:
   // 构造函数
   int2048();
